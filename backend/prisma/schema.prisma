@@ -1,0 +1,252 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  RESEARCHER
+  GOVERNMENT
+  PUBLIC
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IngestionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id            String    @id @default(uuid())
+
+  name          String
+  email         String    @unique
+  passwordHash  String
+
+  role          UserRole  @default(PUBLIC)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Station {
+
+  id                  String   @id @default(uuid())
+
+  stationName         String
+  agency              String
+
+  state               String
+  stateLGDCode        String?
+
+  district            String
+  districtLGDCode     String?
+
+  tehsil              String?
+  block               String?
+  village             String?
+
+  river               String?
+  basin               String?
+
+  tributary           String?
+  subTributary        String?
+  subSubTributary     String?
+  localRiver          String?
+
+  latitude            Float
+  longitude           Float
+
+  rlMsl               Float?
+
+  isActive            Boolean @default(true)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  aquiferTypeId       String?
+  aquiferType         AquiferType?     @relation(fields: [aquiferTypeId], references: [id], onDelete: SetNull)
+  assessmentUnitId    String?
+  assessmentUnit      AssessmentUnit?  @relation(fields: [assessmentUnitId], references: [id], onDelete: SetNull)
+
+  readings            GroundwaterReading[]
+  forecasts           Forecast[]
+  rechargeResults     RechargeResult[]
+  alerts              Alert[]
+
+  @@unique([stationName, agency, latitude, longitude])
+}
+
+model GroundwaterReading {
+
+  id                  String   @id @default(uuid())
+
+  stationId           String
+  station             Station  @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  timestamp           DateTime
+
+  rawWaterLevel       Float
+
+  cleanedWaterLevel   Float?
+
+  isAnomaly           Boolean  @default(false)
+
+  isImputed           Boolean  @default(false)
+
+  dataSource          String   @default("NWDP")
+
+  createdAt           DateTime @default(now())
+
+  @@unique([stationId, timestamp])
+
+  @@index([stationId])
+  @@index([timestamp])
+  @@index([stationId, timestamp])
+}
+
+model Forecast {
+
+  id                  String   @id @default(uuid())
+
+  stationId           String
+  station             Station  @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  forecastTime        DateTime
+
+  predictedLevel      Float
+
+  confidence          Float?
+
+  modelName           String
+
+  generatedAt         DateTime @default(now())
+
+  @@index([stationId])
+
+  @@unique([stationId, forecastTime, modelName])
+}
+
+model RechargeResult {
+
+  id                  String   @id @default(uuid())
+
+  stationId           String
+  station             Station @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  periodStart         DateTime
+  periodEnd           DateTime
+
+  recharge            Float
+
+  deltaWaterLevel     Float
+
+  specificYield       Float
+
+  createdAt           DateTime @default(now())
+
+  @@index([stationId])
+}
+
+model Alert {
+
+  id                  String   @id @default(uuid())
+
+  stationId           String
+  station             Station @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  title               String
+
+  message             String
+
+  severity            AlertSeverity
+
+  isResolved          Boolean @default(false)
+
+  createdAt           DateTime @default(now())
+
+  resolvedAt          DateTime?
+}
+
+model IngestionLog {
+
+  id                String            @id @default(uuid())
+
+  startedAt         DateTime          @default(now())
+
+  completedAt       DateTime?
+
+  recordsFetched    Int               @default(0)
+
+  recordsInserted   Int               @default(0)
+
+  lastOffset        Int               @default(0)
+
+  status            IngestionStatus   @default(RUNNING)
+
+  message           String?
+
+}
+
+enum AssessmentCategory {
+  SAFE
+  SEMI_CRITICAL
+  CRITICAL
+  OVER_EXPLOITED
+}
+
+model AquiferType {
+  id                String    @id @default(uuid())
+  name              String    @unique
+  geologyCode       String?
+  description       String?
+  specificYield     Float
+  minSpecificYield  Float
+  maxSpecificYield  Float
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  stations          Station[]
+}
+
+model AssessmentUnit {
+  id                String           @id @default(uuid())
+  state             String
+  district          String
+  taluka            String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  stations          Station[]
+  assessments       AssessmentData[]
+
+  @@unique([state, district, taluka])
+}
+
+model AssessmentData {
+  id                String             @id @default(uuid())
+  assessmentUnitId  String
+  assessmentUnit    AssessmentUnit     @relation(fields: [assessmentUnitId], references: [id], onDelete: Cascade)
+  year              Int
+  annualRecharge    Float
+  annualExtraction  Float
+  stageOfExtraction Float
+  area              Float?
+  category          AssessmentCategory
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([assessmentUnitId, year])
+  @@index([assessmentUnitId])
+}
